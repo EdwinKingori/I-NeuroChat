@@ -1,0 +1,70 @@
+# Ignore Virtual Environments
+Venv/
+Env/
+venv/
+env/
+
+# Ignore python conigs
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# IDE editor Settings
+.vscode/
+.idea/
+*swp
+.idea/
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+
+# Test output
+htmlcov/
+.tox/
+.nox/
+coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# MyPy and other tooling
+.mypy_cache/
+.dmypy.json
+.pyre/
+
+# Local config environent variables
+.env
+*.env
+.env.*
+!.env.example
+
+# Logs and database files
+logs/
+*.log
+*.sqlite3
+
+# DB or data files (optional, if using SQLite etc.)
+*.sqlite3
+*.db
+
+
+# __pypackages__ (PEP 582)
+__pypackages__/
+
+
+
