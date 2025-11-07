@@ -24,11 +24,13 @@ mdurl==0.1.2
 psycopg2==2.9.11
 psycopg2-binary==2.9.11
 pydantic==2.12.3
+pydantic-settings==2.11.0
 pydantic_core==2.41.4
 Pygments==2.19.2
 python-dotenv==1.2.1
 python-multipart==0.0.20
 PyYAML==6.0.3
+redis==7.0.1
 rich==14.2.0
 rich-toolkit==0.15.1
 rignore==0.7.4
