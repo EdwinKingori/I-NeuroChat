@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     db_user: str = Field(..., env="DB_USER")
     db_password: str = Field(..., env="DB_PASSWORD")
 
+    REDIS_URL: str = Field(..., env="REDIS_URL")
     REDIS_HMAC_SECRET: str = Field(..., env="REDIS_HMAC_SECRET")
 
     @property
