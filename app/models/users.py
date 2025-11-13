@@ -32,7 +32,7 @@ memory = relationship(
 
 sessions = relationship(
     "UserMemory",
-    back_populate="user",
+    back_populates="user",
     uselist=False,
     cascade="all, delete-orphan",
     passive_deletes=True
