@@ -15,7 +15,9 @@ class User(Base):
         index=True
     )
     username = Column(String(150), unique=True, nullable=False, index=True)
-    email = Column(String(254), unique=True, nullable=True)
+    email = Column(String(254), unique=True, nullable=False)
+    first_name = Column(String, nullable=False)
+    last_name = Column(String, nullable=False)
     hashed_password = Column(String(256), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
