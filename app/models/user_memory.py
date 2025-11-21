@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
+# ✅=== USER_MEMORY TABLE ===
 class UserMemory(Base):
     __tablename__ = "user_memory"
 

@@ -5,6 +5,7 @@ import uuid
 from app.core.database import Base
 
 
+# ✅ === CHAT_MESSAGES TABLE ===
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 

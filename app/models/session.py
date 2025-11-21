@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
+# ✅ === SESSIONS TABLE ===
 class ConversationSession(Base):
     __tablename__ = "sessions"
 

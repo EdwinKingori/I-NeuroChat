@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
+# ✅ === USERS TABLE ===
 class User(Base):
     __tablename__ = "users"
 
