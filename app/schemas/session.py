@@ -4,6 +4,7 @@ from uuid import UUID
 from typing import Optional, List
 
 from .user import UserResponse
+from .message import ChatMessageResponse
 
 
 # ✅ === Base Session Schema ===
@@ -46,7 +47,7 @@ class SessionRead(SessionResponse):
     - All the messages in the session
     """
     user: UserResponse
-    # message: List[] = []
+    message: List[ChatMessageResponse] = []
 
     class Config:
         from_attributes = True
