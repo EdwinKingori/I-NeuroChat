@@ -53,7 +53,7 @@ class UserResponse(UserBase):
     first_name: Optional[str]
     last_name: Optional[str]
 
-    class config:
+    class Config:
         from_attributes = True
 
 
@@ -66,5 +66,5 @@ class UserRead(UserResponse):
     created_at: datetime
     updated_at: datetime
 
-    class config:
+    class Config:
         from_attributes = True
