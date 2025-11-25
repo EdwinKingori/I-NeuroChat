@@ -55,6 +55,10 @@ class ChatMessageResponse(ChatMessageBase):
     user_id: UUID
     session_id: UUID
     created_at: datetime
+    source: Optional[str] = Field(
+        ...,
+        description="Source of the data: 'redis' or 'postgres'"
+    )
 
     class Config:
         from_attributes = True
@@ -72,6 +76,10 @@ class ChatMessageRead(ChatMessageResponse):
     """
     user: UserResponse
     session: SessionResponse
+    source: Optional[str] = Field(
+        ...,
+        description="Source of the data: 'redis' or 'postgres'"
+    )
 
     class Config:
         from_attriibutes = True

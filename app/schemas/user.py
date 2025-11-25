@@ -52,6 +52,10 @@ class UserResponse(UserBase):
     email: EmailStr
     first_name: Optional[str]
     last_name: Optional[str]
+    source: Optional[str] = Field(
+        ...,
+        description="Source of the data: 'redis' or 'postgres'"
+    )
 
     class Config:
         from_attributes = True
@@ -65,6 +69,10 @@ class UserRead(UserResponse):
     """
     created_at: datetime
     updated_at: datetime
+    source: Optional[str] = Field(
+        ...,
+        description="Source of the data: 'redis' or 'postgres'"
+    )
 
     class Config:
         from_attributes = True

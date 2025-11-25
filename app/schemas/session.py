@@ -34,6 +34,10 @@ class SessionResponse(SessionBase):
     started_at: datetime
     ended_at: Optional[datetime] = None
     is_active: int
+    source: Optional[str] = Field(
+        ...,
+        description="Source of the data: 'redis' or 'postgres'"
+    )
 
     class Config:
         from_attributes = True
@@ -48,6 +52,11 @@ class SessionRead(SessionResponse):
     """
     user: UserResponse
     message: List[ChatMessageResponse] = []
+
+    source: Optional[str] = Field(
+        ...,
+        description="Source of the data: 'redis' or 'postgres'"
+    )
 
     class Config:
         from_attributes = True
