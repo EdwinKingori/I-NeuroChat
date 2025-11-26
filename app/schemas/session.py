@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
 from uuid import UUID
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from .user import UserResponse
 from .message import ChatMessageResponse
@@ -34,10 +34,7 @@ class SessionResponse(SessionBase):
     started_at: datetime
     ended_at: Optional[datetime] = None
     is_active: int
-    source: Optional[str] = Field(
-        ...,
-        description="Source of the data: 'redis' or 'postgres'"
-    )
+    source: Literal["PostgresDB", "Redis"] = "PostgresDB"
 
     class Config:
         from_attributes = True
@@ -53,10 +50,7 @@ class SessionRead(SessionResponse):
     user: UserResponse
     message: List[ChatMessageResponse] = []
 
-    source: Optional[str] = Field(
-        ...,
-        description="Source of the data: 'redis' or 'postgres'"
-    )
+    source: Literal["PostgresDB", "Redis"] = "PostgresDB"
 
     class Config:
         from_attributes = True

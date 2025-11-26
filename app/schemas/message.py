@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from uuid import UUID
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -55,10 +55,7 @@ class ChatMessageResponse(ChatMessageBase):
     user_id: UUID
     session_id: UUID
     created_at: datetime
-    source: Optional[str] = Field(
-        ...,
-        description="Source of the data: 'redis' or 'postgres'"
-    )
+    source: Literal["PostgresDB", "Redis"] = "PostgresDB"
 
     class Config:
         from_attributes = True
@@ -76,10 +73,7 @@ class ChatMessageRead(ChatMessageResponse):
     """
     user: UserResponse
     session: SessionResponse
-    source: Optional[str] = Field(
-        ...,
-        description="Source of the data: 'redis' or 'postgres'"
-    )
+    source: Literal["PostgresDB", "Redis"] = "PostgresDB"
 
     class Config:
         from_attriibutes = True

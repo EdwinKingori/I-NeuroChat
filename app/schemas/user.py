@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal
 
 
 # ✅ == User's Base ===
@@ -52,10 +52,7 @@ class UserResponse(UserBase):
     email: EmailStr
     first_name: Optional[str]
     last_name: Optional[str]
-    source: Optional[str] = Field(
-        ...,
-        description="Source of the data: 'redis' or 'postgres'"
-    )
+    source: Literal["PostgresDB", "Redis"] = "PostgresDB"
 
     class Config:
         from_attributes = True
@@ -69,10 +66,7 @@ class UserRead(UserResponse):
     """
     created_at: datetime
     updated_at: datetime
-    source: Optional[str] = Field(
-        ...,
-        description="Source of the data: 'redis' or 'postgres'"
-    )
+    source: Literal["PostgresDB", "Redis"] = "PostgresDB"
 
     class Config:
         from_attributes = True

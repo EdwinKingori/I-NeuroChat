@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from uuid import UUID
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 
 from .user import UserResponse
@@ -28,10 +28,7 @@ class UserMemoryResponse(UserMemoryBase):
     user_id: UUID
     updated_at: datetime
 
-    source: Optional[str] = Field(
-        ...,
-        description="Source of the data: 'redis' or 'postgres'"
-    )
+    source: Literal["PostgresDB", "Redis"] = "PostgresDB"
 
     class Config:
         from_attributes = True
@@ -43,10 +40,7 @@ class UserMemoryRead(UserMemoryResponse):
     Full detailed memory record including user information.
     """
     user: UserResponse
-    source: Optional[str] = Field(
-        ...,
-        description="Source of the data: 'redis' or 'postgres'"
-    )
+    source: Literal["PostgresDB", "Redis"] = "PostgresDB"
 
     class Config:
         from_attributes = True
