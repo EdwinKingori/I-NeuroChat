@@ -47,7 +47,7 @@ class SessionRead(SessionResponse):
     - All the messages in the session
     """
     user: UserResponse
-    message: List[ChatMessageResponse] = []
+    messages: List[ChatMessageResponse] = []
 
     class Config:
         from_attributes = True

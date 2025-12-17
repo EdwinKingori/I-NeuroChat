@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime
+from uuid import UUID
 from typing import Optional
 
 
@@ -48,7 +49,7 @@ class UserResponse(UserBase):
     To be used when referencing this user's inside other schemas
     It will only contain non-sensitive public fields
     """
-    id: int
+    id: UUID
     email: EmailStr
     first_name: Optional[str]
     last_name: Optional[str]

@@ -74,4 +74,4 @@ class ChatMessageRead(ChatMessageResponse):
     session: SessionResponse
 
     class Config:
-        from_attriibutes = True
+        from_attributes = True

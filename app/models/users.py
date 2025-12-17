@@ -34,7 +34,7 @@ memory = relationship(
 )
 
 sessions = relationship(
-    "UserMemory",
+    "ConversationSession",
     back_populates="user",
     uselist=False,
     cascade="all, delete-orphan",
