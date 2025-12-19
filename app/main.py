@@ -35,6 +35,15 @@ RESET = "\033[0m"
 
 
 # ✅ Health status checking
+@app.get("/health")
+async def get_health_check():
+    logger.info(f"{BOLD}{CYAN}</>{RESET} Health Status check")
+    return {
+        "message": "The AI-Chat Agent API is healthy!"
+    }
+
+
+# ✅ Welcoming Endpoint
 @app.get("/")
 async def root_status():
     logger.info(f"{BOLD}{CYAN}</>{RESET} Root endpoint accessed")

@@ -13,7 +13,7 @@ from app.schemas.user import UserCreate, UserResponse, UserRead, UserUpdate
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
-    prefix="/users",
+    prefix="/api/v1/users",
     tags=["Users"]
 )
 
