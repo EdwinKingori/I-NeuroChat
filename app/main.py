@@ -2,9 +2,9 @@ from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 import logging
 
-from core.logging_config import setup_logging
-from core.middleware import RequestLoggingMiddleware
-from core.redis_config import redis_client
+from app.core.logging_config import setup_logging
+from app.core.middleware import RequestLoggingMiddleware
+from app.core.redis_config import redis_client
 
 # ✅ Initializing logging
 setup_logging()
