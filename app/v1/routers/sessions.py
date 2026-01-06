@@ -1,7 +1,7 @@
 from fastapi import Depends, APIRouter, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import list
+from typing import List
 from uuid import UUID
 import logging
 
@@ -69,15 +69,37 @@ async def get_session(
     redis: AsyncRedisClient = Depends(get_redis)
 ):
     """
-    Fetch session by ID
+    Fetch session by ID:
+    Logical Flow:
+    1. Attempt Redis cache
+    2. If cache miss -> fetch from PostgreSQL
+    3. Cache the DB result in Redis
     """
-    # 1️⃣ Attempt to fetch from Redis first
-    logger.info("Fetching session for user %s", session_id, user_id)
 
+    logger.info("READ session requested | session_id= %s user_id=%s",
+                session_id, user_id)
+
+    # 1️⃣ Attempt to fetch from Redis first
     cached = await get_cached_session(session_id, redis)
-    if cached and cached.get("user_id") == str(user_id):
+
+    # authorization verification
+    if cached:
+        if cached.get("user_id") != str(user_id):
+            logger.warning(
+                "Unauthorized Redis cache access | session_id=%s user_id=%s",
+                session_id,
+                user_id
+            )
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        logger.info(
+            "Session served from Redis | session_id=%s",
+            session_id
+        )
+
         return cached
 
+    # 2️⃣ PostgreSQL fallback
     result = await db.execute(
         select(SessionModel)
         .where(
@@ -85,12 +107,46 @@ async def get_session(
             SessionModel.user_id == user_id
         )
     )
+
     session = result.scalar_one_or_none()
 
     if not session:
-        logger.warning("Session not found or unauthorized access")
+        logger.warning(
+            "Session not found in DB |  session_id=%s user_id=%s",
+            session_id,
+            user_id
+        )
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # 2️⃣ Fallback to DB
-    await cache_session(session, redis)
-    return SessionResponse.model_validate(session)
+    # 3️⃣ Serialize + cache
+    response = SessionResponse.model_validate(session).model_dump()
+    response["source"] = "Postgres DB"
+
+    await redis.set_json(f"session:{session_id}", response, ex=SESSION_TTL)
+
+    logger.info(
+        "Session fetched from PostgreSQL and cached | session_id=%s",
+        session_id
+    )
+
+    return response
+
+
+# ✅ Route: Fetching all user's sessions
+@router.get("/sessions", response_model=List[SessionResponse])
+async def list_user_sessions(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    redis: AsyncRedisClient = Depends(get_redis)
+):
+    """
+     List all sessions owned by a user.
+     Logical flow:
+    1. Attempt Redis list cache.
+    2. Fallback to PostgrSQL
+
+    """
+
+    logger.info("Listing sessions requested | user_id=%s", user_id)
+
+    cache_key = f"user:{user_id}:sessions"
