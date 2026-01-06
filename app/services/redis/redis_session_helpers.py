@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +8,8 @@ from app.core.redis_config import AsyncRedisClient
 from app.models.session import ConversationSession as SessionModel
 from app.schemas.session import SessionResponse
 
+
+logger = logging.getLogger(__name__)
 
 # == ✅ Redis TTL for Caching ==
 SESSION_TTL = 24 * 3600
@@ -35,6 +38,7 @@ async def cache_session(
         [{**data, "session_id": str(session.id)}],
         ex=3600
     )
+    logger.debug("Session %s cached in Redis", session.id)
 
 
 # Read session from cache
@@ -48,6 +52,7 @@ async def get_cached_session(
     cached = await redis.get_json(f"session:{session_id}")
     if cached:
         cached["source"] = "Redis Cache"
+        logger.debug("Session %s served from Redis", session_id)
     return cached
 
 

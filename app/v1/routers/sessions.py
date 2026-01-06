@@ -37,6 +37,7 @@ async def create_Session(
     Create a ConversationSession assigned to `user_id`.
     """
     logger.info("Creating session for user %s", user_id)
+
     session = SessionModel(
         user_id=user_id,
         title=session_in.title,
@@ -59,10 +60,11 @@ async def create_Session(
     return response_dict
 
 
-# ✅ Route: GET session by ID(cache-first)
+# ✅ Route: Fetch session by ID(cache-first)
 @router.get("/{session_id}", response_model=SessionResponse, status_code=status.HTTP_200_OK)
 async def get_session(
     session_id: UUID,
+    user_id: UUID,
     db: AsyncSession = Depends(get_db),
     redis: AsyncRedisClient = Depends(get_redis)
 ):
@@ -70,9 +72,25 @@ async def get_session(
     Fetch session by ID
     """
     # 1️⃣ Attempt to fetch from Redis first
+    logger.info("Fetching session for user %s", session_id, user_id)
+
     cached = await get_cached_session(session_id, redis)
-    if cached:
+    if cached and cached.get("user_id") == str(user_id):
         return cached
 
+    result = await db.execute(
+        select(SessionModel)
+        .where(
+            SessionModel.id == session_id,
+            SessionModel.user_id == user_id
+        )
+    )
+    session = result.scalar_one_or_none()
+
+    if not session:
+        logger.warning("Session not found or unauthorized access")
+        raise HTTPException(status_code=404, detail="Session not found")
+
     # 2️⃣ Fallback to DB
-    return await fetch_session_and_cache(session_id, db, redis)
+    await cache_session(session, redis)
+    return SessionResponse.model_validate(session)
