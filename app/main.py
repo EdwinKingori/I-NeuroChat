@@ -5,6 +5,7 @@ import logging
 from app.core.logging_config import setup_logging
 from app.core.middleware import RequestLoggingMiddleware
 from app.core.redis_config import redis_client
+from app.v1.routers import users, sessions
 
 # ✅ Initializing logging
 setup_logging()
@@ -24,6 +25,10 @@ app = FastAPI(
     lifespan=lifespan,
     title="I-NeuroChat API"
 )
+
+# ✅ Registering Routes
+app.include_router(users.router)
+app.include_router(sessions.router)
 
 # ✅ Registering the middleware
 app.add_middleware(RequestLoggingMiddleware)

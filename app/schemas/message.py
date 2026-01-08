@@ -5,7 +5,6 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from .user import UserResponse
-from .session import SessionResponse
 
 
 # ✅ === Base ChatMessage Schema ===
@@ -71,7 +70,6 @@ class ChatMessageRead(ChatMessageResponse):
     Useful for detailed message inspection or admin debugging tools.
     """
     user: UserResponse
-    session: SessionResponse
 
     class Config:
         from_attributes = True

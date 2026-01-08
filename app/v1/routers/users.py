@@ -5,13 +5,15 @@ from uuid import UUID
 import json
 import logging
 
+from app.core.logging_config import setup_logging
 from app.core.database import get_db
 from app.core.redis_config import AsyncRedisClient, get_redis
 from app.models.users import User
 from app.schemas.user import UserCreate, UserResponse, UserRead, UserUpdate
 
-
+setup_logging()
 logger = logging.getLogger(__name__)
+
 router = APIRouter(
     prefix="/api/v1/users",
     tags=["Users"]
