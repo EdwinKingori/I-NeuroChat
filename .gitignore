@@ -1,7 +1,7 @@
 # Ignore Virtual Environments
 Venv/
 Env/
-venv/
+.venv/
 env/
 
 # Ignore python conigs
