@@ -11,9 +11,11 @@ from app.core.redis_config import AsyncRedisClient, get_redis
 from app.models.users import User
 from app.schemas.user import UserCreate, UserResponse, UserRead, UserUpdate
 
+# ✅ Logging setup
 setup_logging()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("users.routes")
 
+# ✅ Router
 router = APIRouter(
     prefix="/api/v1/users",
     tags=["Users"]

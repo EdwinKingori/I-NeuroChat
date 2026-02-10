@@ -19,7 +19,7 @@ router = APIRouter(
     prefix="/api/v1/sessions",
     tags=["Sessions"]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("seesion.routes")
 
 # == ✅ Redis TTL for Caching ==
 SESSION_TTL = 24 * 3600
