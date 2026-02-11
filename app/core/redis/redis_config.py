@@ -1,7 +1,7 @@
 import aioredis
 import json
 import logging
-from .config import get_settings
+from app.core.config import get_settings
 from .hmac_security import hmac_key
 from typing import AsyncGenerator
 settings = get_settings()
