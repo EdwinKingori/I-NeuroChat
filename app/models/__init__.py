@@ -1,5 +1,5 @@
 # Ensuring alembic auto-delivers all tables
-from app.core.database import Base
+from app.core.db.database import Base
 from .users import User
 from .user_memory import UserMemory
 from .session import ConversationSession

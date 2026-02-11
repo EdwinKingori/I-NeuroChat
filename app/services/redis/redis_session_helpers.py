@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.core.redis_config import AsyncRedisClient
+from app.core.redis.redis_config import AsyncRedisClient
 from app.models.session import ConversationSession as SessionModel
 from app.schemas.session import SessionResponse
 

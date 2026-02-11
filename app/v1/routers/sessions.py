@@ -5,8 +5,8 @@ from typing import List
 from uuid import UUID
 import logging
 
-from app.core.database import get_db
-from app.core.redis_config import get_redis, AsyncRedisClient
+from app.core.db.database import get_db
+from app.core.redis.redis_config import get_redis, AsyncRedisClient
 from app.models.session import ConversationSession as SessionModel
 from app.schemas.session import SessionCreate, SessionRead, SessionResponse
 from app.services.redis.redis_session_helpers import (

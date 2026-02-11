@@ -2,10 +2,10 @@ from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 import logging
 
-from app.core.logging_config import setup_logging
-from app.core.middleware import RequestLoggingMiddleware
-from app.core.redis_config import redis_client
-from app.v1.routers import users, sessions
+from app.core.logging.logging_config import setup_logging
+from app.core.logging.middleware import RequestLoggingMiddleware
+from app.core.redis.redis_config import redis_client
+from app.v1.routers import messages, users, sessions
 
 # ✅ Initializing logging
 setup_logging()
@@ -29,6 +29,7 @@ app = FastAPI(
 # ✅ Registering Routes
 app.include_router(users.router)
 app.include_router(sessions.router)
+app.include_router(messages.router)
 
 # ✅ Registering the middleware
 app.add_middleware(RequestLoggingMiddleware)

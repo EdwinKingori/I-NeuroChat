@@ -5,9 +5,9 @@ from uuid import UUID
 import json
 import logging
 
-from app.core.logging_config import setup_logging
-from app.core.database import get_db
-from app.core.redis_config import AsyncRedisClient, get_redis
+from app.core.logging.logging_config import setup_logging
+from app.core.db.database import get_db
+from app.core.redis.redis_config import AsyncRedisClient, get_redis
 from app.models.users import User
 from app.schemas.user import UserCreate, UserResponse, UserRead, UserUpdate
 
