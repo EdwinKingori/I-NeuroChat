@@ -27,6 +27,18 @@ class SessionCreate(SessionBase):
     """
     pass
 
+# ✅ Safe session update schema.
+class SessionUpdate(BaseModel):
+    """
+    Only metadata fields that do NOT break
+    conversation integrity are allowed.
+    """
+
+    title: Optional[str] = Field(None, max_length=255)
+    system_prompt: Optional[str] = Field(None, max_length=512)
+
+    class Config:
+        extra = "forbid" 
 
 # ✅ Lightweight Session response schema (serializer)
 class SessionResponse(SessionBase):

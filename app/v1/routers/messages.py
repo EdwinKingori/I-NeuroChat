@@ -13,13 +13,14 @@ from app.schemas.message import (
     ChatMessageResponse, 
     ChatMessageRead,
 )
+from app.core.logging.route_logger import get_route_logger
 from app.services.helpers.crud_helper import CRUDHelper
 from app.services.helpers.redis_helpers import fetch_from_cache_or_db
 from app.services.helpers.pagination import paginate_query
 from app.services.helpers.sorting import apply_sorting
 
 # ✅ Logger
-logger = logging.getLogger("messages.routes")
+logger = get_route_logger("messages.routes")
 
 # ✅ Router
 router = APIRouter(

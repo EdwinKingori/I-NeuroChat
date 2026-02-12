@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from uuid import UUID
@@ -10,10 +10,16 @@ from app.core.db.database import get_db
 from app.core.redis.redis_config import AsyncRedisClient, get_redis
 from app.models.users import User
 from app.schemas.user import UserCreate, UserResponse, UserRead, UserUpdate
+from app.core.logging.route_logger import get_route_logger
+
+from app.services.helpers.crud_helper import CRUDHelper
+from app.services.helpers.redis_helpers import fetch_from_cache_or_db
+from app.services.helpers.pagination import paginate_query
+from app.services.helpers.sorting import apply_sorting
+
 
 # ✅ Logging setup
-setup_logging()
-logger = logging.getLogger("users.routes")
+logger = get_route_logger("users.routes")
 
 # ✅ Router
 router = APIRouter(
@@ -23,66 +29,57 @@ router = APIRouter(
 
 # Redis TTL for caching
 USER_CACHE_TTL = 300  # -> 5 minutes
+USERS_LIST_TTL = 120 
 
 
 # ✅ === CREATE USER ===
 @router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 async def create_user(
-    user_data: UserCreate,
+    payload: UserCreate,
     db: AsyncSession = Depends(get_db),
-    redis: AsyncRedisClient = Depends(get_redis)
+    redis: AsyncRedisClient = Depends(get_redis),
 ):
-    """
-    Creating a new User.
-    - Storing user data in PostgreSQL
-    - Cache data in Redis for quick access
-    """
+    logger.info("Creating user | username=%s", payload.username)
 
-    # Verify is user data exists
-    user_exists = select(User).where(
-        (User.username == user_data.username) | (User.email == user_data.email)
-    )
-    result = await db.execute(user_exists)
-    existing_user = result.scalar_one_or_none()
-
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username or email already registered"
-        )
-
-    # Create user
-    new_user = User(
-        username=user_data.username,
-        email=user_data.email,
-        first_name=user_data.first_name,
-        last_name=user_data.last_name,
-        hashed_password=f"temp_hash_{user_data.password}"
+    # Check duplicates
+    existing = await CRUDHelper.get_all(
+        db,
+        User,
+        filters=[
+            (User.username == payload.username) |
+            (User.email == payload.email)
+        ],
+        limit=1
     )
 
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
+    if existing:
+        raise HTTPException(400, "Username or email already registered")
 
-    # Cache the user's data in Redis
-    cache_key = f"user:{new_user.id}"
-    user_dict = {
-        "id": str(new_user.id),
-        "username": new_user.username,
-        "email": new_user.email,
-        "first_name": new_user.first_name,
-        "last_name": new_user.last_name,
-        "created_at": new_user.created_at.isoformat(),
-        "updated_at": new_user.updated_at.isoformat() if new_user.updated_at else None
-    }
-    await redis.set_json(cache_key, user_dict, ex=USER_CACHE_TTL)
+    user = await CRUDHelper.create(
+        db,
+        User,
+        {
+            **payload.model_dump(exclude={"password"}),
+            "hashed_password": f"temp_hash_{payload.password}",
+        }
+    )
 
-    logger.info(f"User created: {user_data.username} (ID: {new_user.id})",)
+    user_data = UserRead.model_validate(user).model_dump()
+
+    # Write-through Redis Cache
+    await redis.set_json(
+        f"user:{user.id}",
+        user_data,
+        ex=USER_CACHE_TTL,
+    )
+
+    logger.info("User created + cached success!| id=%s", user.id)
 
     return UserRead(
-        **user_dict,
-        source="PostgresDB"
+        **user_data,
+        source="PostgreSQL DB",
     )
+
 
 
 # ✅ === FETCH USER BY ID ===
@@ -97,126 +94,106 @@ async def get_user(
     - first check Redis cache
     - falls back to PostgreSQL if not cached
     """
-    cache_key = f"user:{user_id}"
+    async def fetch():
+        user = await CRUDHelper.get_by_id(db, User, user_id)
+        if not user:
+            return None
+        return UserRead.model_validate(user).model_dump(mode="json")
 
-    # Attempt retrieving from Redis first
-    cached_user = await redis.get_json(cache_key)
-    if cached_user:
-        logger.info(f"User {user_id} retrieved from Redis")
-        return UserRead(
-            **cached_user,
-            source="Redis"
-        )
-
-    # fetch from POstgreSQL
-    user = select(User).where(User.id == user_id)
-    result = await db.execute(user)
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(
-            status=status.HTTP_404_NOT_FOUND,
-            detail=f"User {user_id} not found"
-        )
-
-    # Cache for future requests
-    user_dict = {
-        "id": str(user.id),
-        "username": user.username,
-        "email": user.email,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "created_at": user.created_at.isoformat(),
-        "updated_at": user.updated_at.isoformat() if user.updated_at else None
-    }
-
-    await redis.set_json(cache_key, user_dict, ex=USER_CACHE_TTL)
-
-    logger.info(f"📊 User {user_id} retrieved from PostgreSQL")
-    return UserRead(
-        **user_dict,
-        source="PostgresDB"
+    data, source = await fetch_from_cache_or_db(
+        redis=redis,
+        redis_key=f"user:{user_id}",
+        db_fetch_callable=fetch,
+        ttl=USER_CACHE_TTL,
     )
 
+    if not data:
+        raise HTTPException(404, "User not found")
 
-# ✅ === Fetch ALL USERS ===
-@router.get("/", response_model=list[UserResponse])
+    return UserRead(**data, source=source)
+
+
+# ✅ Fetching all USERS (Pagination and Sorting Integrated)
+@router.get("/", response_model=dict)
 async def list_users(
-    skip: int = 0,
-    limit: int = 50,
-    db: AsyncSession = Depends(get_db)
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    sort_by: str = Query("created_at"),
+    order: str = Query("desc"),
+    db: AsyncSession = Depends(get_db),
+    redis: AsyncRedisClient = Depends(get_redis),
 ):
-    """
-    Listing all users with pagination
-    """
-    all_users = select(User).offset(skip).limit(limit)
-    result = await db.execute(all_users)
-    users = result.scalars().all()
+    cache_key = f"users:list:{page}:{limit}:{sort_by}:{order}"
 
-    return [
-        UserResponse(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            source="PostgresDB"
+    async def fetch():
+        query = select(User)
+
+        query = apply_sorting(query, User, sort_by, order)
+
+        users, total = await paginate_query(
+            session=db,
+            query=query,
+            page=page,
+            limit=limit,
         )
-        for user in users
-    ]
+
+        return {
+            "items": [
+                UserResponse.model_validate(u).model_dump(mode="json")
+                for u in users
+            ],
+            "total": total,
+            "page": page,
+            "limit": limit,
+        }
+
+    data, source = await fetch_from_cache_or_db(
+        redis=redis,
+        redis_key=cache_key,
+        db_fetch_callable=fetch,
+        ttl=USERS_LIST_TTL,
+    )
+
+    return {**data, "source": source}
+
 
 
 # ✅ === UPDATE USER ===
 @router.patch("/{user_id}", response_model=UserRead)
 async def update_user(
     user_id: UUID,
-    user_data: UserUpdate,
+    payload: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    redis: AsyncRedisClient = Depends(get_redis)
+    redis: AsyncRedisClient = Depends(get_redis),
 ):
-    """
-    Updating user details.
-    - The configuration updates PostgreSQL
-    - And invalidates Redis cache
-    """
-    stmt = select(User).where(User.id == user_id)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
+    logger.info("Updating user | id=%s", user_id)
 
+    user = await CRUDHelper.get_by_id(db, User, user_id)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User {user_id} not found"
-        )
+        raise HTTPException(404, "User not found")
 
-    # Update fields
-    update_data = user_data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        if field == "password":
-            setattr(user, "hashed_password", f"temp_hash_{value}")
-        else:
-            setattr(user, field, value)
+    update_data = payload.model_dump(exclude_unset=True)
 
-    await db.commit()
-    await db.refresh(user)
+    if "password" in update_data:
+        update_data["hashed_password"] = f"temp_hash_{update_data.pop('password')}"
 
-    # Invalidate cache
-    cache_key = f"user:{user_id}"
-    await redis.delete(cache_key)
+    user = await CRUDHelper.update(db, user, update_data)
 
-    logger.info(f"✏️ User {user_id} updated")
+    user_data = UserRead.model_validate(user).model_dump()
 
-    user_dict = {
-        "id": str(user.id),
-        "username": user.username,
-        "email": user.email,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "created_at": user.created_at.isoformat(),
-        "updated_at": user.updated_at.isoformat() if user.updated_at else None
-    }
+    # ✅ WRITE-THROUGH: update cache instead of deleting
+    await redis.set_json(
+        f"user:{user_id}",
+        user_data,
+        ex=USER_CACHE_TTL,
+    )
 
-    return UserRead(**user_dict, source="PostgresDB")
+    logger.info("User updated + cache refreshed | id=%s", user_id)
+
+    return UserRead(
+        **user_data, 
+        source="PostgreSQL DB",
+    )
 
 
 # ✅ === DELETE USER ===
@@ -233,21 +210,18 @@ async def delete_user(
     """
 
     logger.info("Delete requested for user %s", user_id)
-    stmt = select(User).where(User.id == user_id)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-
+    
+    user = CRUDHelper.get_by_id(db, User, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User {user_id} not found"
         )
 
-    await db.delete(user)
-    await db.commit()
+    await CRUDHelper.delete(db, user)
 
     # Invalidate cache
-    cache_key = f"user:{user_id}"
-    await redis.delete(cache_key)
+    await redis.delete(f"user:{user_id}")
+    await redis.delete("users:list")
 
-    logger.info(f"🗑️ User {user_id} deleted")
+    logger.info(f"🗑️ User {user_id} deleted! ")

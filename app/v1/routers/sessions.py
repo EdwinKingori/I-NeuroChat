@@ -1,28 +1,38 @@
-from fastapi import Depends, APIRouter, HTTPException, status
+from fastapi import Depends, APIRouter, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
 from uuid import UUID
-import logging
 
 from app.core.db.database import get_db
 from app.core.redis.redis_config import get_redis, AsyncRedisClient
 from app.models.session import ConversationSession as SessionModel
-from app.schemas.session import SessionCreate, SessionRead, SessionResponse
-from app.services.redis.redis_session_helpers import (
-    cache_session,
-    get_cached_session,
-    fetch_session_and_cache,
+from app.schemas.session import (
+    SessionCreate, 
+    SessionResponse, 
+    SessionUpdate,
 )
+from app.core.logging.route_logger import get_route_logger
+from app.services.helpers.crud_helper import CRUDHelper
+from app.services.helpers.redis_helpers import fetch_from_cache_or_db
+from app.services.helpers.pagination import paginate_query
+from app.services.helpers.sorting import apply_sorting
 
+
+
+# == ✅ Logging
+logger =get_route_logger("sessions.routes")
+
+
+# == ✅ Router
 router = APIRouter(
     prefix="/api/v1/sessions",
     tags=["Sessions"]
 )
-logger = logging.getLogger("seesion.routes")
 
 # == ✅ Redis TTL for Caching ==
 SESSION_TTL = 24 * 3600
+SESSION_LIST_TTL = 300
 
 
 # ✅ === CREATE SESSION ===
@@ -38,26 +48,27 @@ async def create_Session(
     """
     logger.info("Creating session for user %s", user_id)
 
-    session = SessionModel(
-        user_id=user_id,
-        title=session_in.title,
-        language=session_in.language or "en",
-        model_used=session_in.model_used or "gpt-5",
-        platform=session_in.platform or "web",
-        system_prompt=session_in.system_prompt,
+    session = await CRUDHelper.create(
+        db,
+        SessionModel,
+        {**session_in.model_dump(), "user_id": user_id},
+    )
+    
+    session_data = SessionResponse.model_validate(session).model_dump()
+
+    # Write-Through Redis
+    await redis.set_json(
+        f"session:{session.id}",
+        session_data,
+        ex=SESSION_TTL,
     )
 
-    db.add(session)
-    await db.commit()
-    await db.refresh(session)
+    logger.info("Session created + cached | id=%s", session.id)
 
-    response = SessionResponse.model_validate(session)
-    response_dict = response.model_dump()
-    response_dict["source"] = "Postgres DB"
-
-    await cache_session(session, redis)
-
-    return response_dict
+    return SessionResponse(
+        **session_data,
+         source="PostgreSQL DB",
+    )
 
 
 # ✅ Route: Fetch session by ID(cache-first)
@@ -79,65 +90,40 @@ async def get_session(
     logger.info("READ session requested | session_id= %s user_id=%s",
                 session_id, user_id)
 
-    # 1️⃣ Attempt to fetch from Redis first
-    cached = await get_cached_session(session_id, redis)
+    async def fetch():
+        session = await CRUDHelper.get_by_id(db, SessionModel, session_id)
 
-    # authorization verification
-    if cached:
-        if cached.get("user_id") != str(user_id):
-            logger.warning(
-                "Unauthorized Redis cache access | session_id=%s user_id=%s",
-                session_id,
-                user_id
-            )
-            raise HTTPException(status_code=404, detail="Session not found")
+        if not session or session.user_id != user_id:
+            return None
 
-        logger.info(
-            "Session served from Redis | session_id=%s",
-            session_id
-        )
+        return SessionResponse.model_validate(session).model_dump()
 
-        return cached
-
-    # 2️⃣ PostgreSQL fallback
-    result = await db.execute(
-        select(SessionModel)
-        .where(
-            SessionModel.id == session_id,
-            SessionModel.user_id == user_id
-        )
+    data, source = await fetch_from_cache_or_db(
+        redis=redis,
+        redis_key=f"session:{session_id}",
+        db_fetch_callable=fetch,
+        ttl=SESSION_TTL,
     )
 
-    session = result.scalar_one_or_none()
-
-    if not session:
-        logger.warning(
-            "Session not found in DB |  session_id=%s user_id=%s",
-            session_id,
-            user_id
+    if not data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Session not found"
         )
-        raise HTTPException(status_code=404, detail="Session not found")
 
-    # 3️⃣ Serialize + cache
-    response = SessionResponse.model_validate(session).model_dump()
-    response["source"] = "Postgres DB"
-
-    await redis.set_json(f"session:{session_id}", response, ex=SESSION_TTL)
-
-    logger.info(
-        "Session fetched from PostgreSQL and cached | session_id=%s",
-        session_id
-    )
-
-    return response
+    return SessionResponse(**data, source=source)
 
 
-# ✅ Route: Fetching all user's sessions
+# ✅ Route: Fetching all user's sessions (Pagination and Sorting Integrated)
 @router.get("/", response_model=List[SessionResponse])
 async def list_user_sessions(
     user_id: UUID,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, le=100),
+    sort_by: str = Query("started_at"),
+    order: str = Query("desc"),
     db: AsyncSession = Depends(get_db),
-    redis: AsyncRedisClient = Depends(get_redis)
+    redis: AsyncRedisClient = Depends(get_redis),
 ):
     """
     List all sessions owned by a user.
@@ -148,56 +134,47 @@ async def list_user_sessions(
 
     """
 
-    logger.info("Listing sessions requested | user_id=%s", user_id)
+    cache_key = f"user:{user_id}:sessions:{page}:{limit}:{sort_by}:{order}"
 
-    cache_key = f"user:{user_id}:sessions"
-
-    # 1️⃣ Redis
-    cached = await redis.get(cache_key)
-    if cached:
-        logger.info(
-            "Sessions list served from Redis | user_id=%s count=%d",
-            user_id,
-            len(cached)
+    async def fetch():
+        query = select(SessionModel).where(
+            SessionModel.user_id == user_id
         )
-        return cached
 
-    logger.info(
-        "Redis session list MISS | Fetching from PostgreSQL | user_id=%s",
-        user_id
+        query = apply_sorting(query, SessionModel, sort_by, order)
+
+        sessions, total = await paginate_query(
+            session=db,
+            query=query,
+            page=page,
+            limit=limit,
+        )
+
+        return {
+            "items": [
+                SessionResponse.model_validate(s).model_dump(mode="json")
+                for s in sessions
+            ],
+            "total": total,
+            "page": page,
+            "limit": limit,
+        }
+
+    data, source = await fetch_from_cache_or_db(
+        redis=redis,
+        redis_key=cache_key,
+        db_fetch_callable=fetch,
+        ttl=SESSION_LIST_TTL,
     )
 
-    # 2️⃣ Retrive from PostgreSQL
-    result = await db.execute(
-        select(SessionModel)
-        .where(SessionModel.user_id == user_id)
-        .order_by(SessionModel.started_at.desc())
-    )
-    sessions = result.scalars().all()
-
-    response = []
-    for session in sessions:
-        data = SessionResponse.model_validate(session).model_dump()
-        data["source"] = "Postgres DB"
-        response.append(data)
-
-    # caching data retrieved from Postgres DB
-    await redis.set_json(cache_key, response, ex=3600)
-
-    logger.info(
-        "Session list cached in Redis | user_id=%s count=%d",
-        user_id,
-        len(response)
-    )
-
-    return response
+    return {**data, "source": source}
 
 
 # ✅ Route: Updating a user's sessions
 @router.patch("/{session_id}", response_model=SessionResponse)
 async def update_session(
     session_id: UUID,
-    session_in: SessionCreate,
+    session_update: SessionUpdate,
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
     redis: AsyncRedisClient = Depends(get_redis),
@@ -205,25 +182,31 @@ async def update_session(
 
     logger.info("Updating session=%s user=%s", session_id, user_id)
 
-    result = await db.execute(
-        select(SessionModel)
-        .where(SessionModel.id == session_id, SessionModel.user_id == user_id)
+    session = await CRUDHelper.get_by_id(db, SessionModel, session_id)
+
+    if not session or session.user_id != user_id:
+        raise HTTPException(404, "Session not found")
+
+    update_data = session_update.model_dump(exclude_unset=True)
+
+    if not update_data:
+        raise HTTPException(400, "No valid fields provided for update")
+
+    session = await CRUDHelper.update(db, session, update_data)
+
+    session_schema = SessionResponse.model_validate(session)
+    session_dict = session_schema.model_dump()
+
+    # ✅ WRITE-THROUGH CACHE UPDATE
+    await redis.set_json(
+        f"session:{session_id}",
+        session_dict,
+        ex=SESSION_TTL,
     )
-    session = result.scalar_one_or_none()
 
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    logger.info("Session metadata updated & cache refreshed | id=%s", session_id)
 
-    for field, value in session_in.model_dump(exclude_unset=True).items():
-        setattr(session, field, value)
-
-    await db.commit()
-    await db.refresh(session)
-
-    await cache_session(session, redis)
-
-    logger.info("Session updated id=%s", session_id)
-    return SessionResponse.model_validate(session)
+    return session_schema
 
 
 # ✅ Route: Deleting a user's session
@@ -236,22 +219,14 @@ async def delete_session(
 ):
     logger.info("Deleting session=%s user=%s", session_id, user_id)
 
-    result = await db.execute(
-        select(SessionModel)
-        .where(
-            SessionModel.id == session_id,
-            SessionModel.user_id == user_id
-        )
-    )
-    session = result.scalar_one_or_none()
+    session = await CRUDHelper.get_by_id(db, SessionModel, session_id)
 
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    if not session or session.user_id != user_id:
+        raise HTTPException(404, "Session not found")
 
-    await db.delete(session)
-    await db.commit()
+    await CRUDHelper.delete(db, session)
 
     await redis.delete(f"session:{session_id}")
     await redis.delete(f"user:{user_id}:sessions")
 
-    logger.info("Session deleted id+%s", session_id)
+    logger.info("Session deleted | id=%s", session_id)
