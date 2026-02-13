@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, func
+from sqlalchemy import Column, String, Boolean, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.db.database import Base
@@ -20,6 +20,13 @@ class User(Base):
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
     hashed_password = Column(String(256), nullable=False)
+
+    # New admin fields
+    is_active = Column(Boolean, default=True, index=True)
+
+    # For user's activition or deactivation
+    last_login = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -36,7 +43,6 @@ memory = relationship(
 sessions = relationship(
     "ConversationSession",
     back_populates="user",
-    uselist=False,
     cascade="all, delete-orphan",
     passive_deletes=True
 )
@@ -47,3 +53,17 @@ messages = relationship(
     cascade="all, delete-orphan",
     passive_deletes=True
 )
+
+auth_sessions = relationship(
+    "UserSession",
+    back_populates="user",
+    cascade="all, delete-orphan"
+)
+
+roles = relationship(
+
+    "Role",
+    secondary="user_roles",
+    back_populates="users"
+)
+

@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = Field(..., env="REDIS_URL")
     REDIS_HMAC_SECRET: str = Field(..., env="REDIS_HMAC_SECRET")
 
+    # CELERY SETTINGS 
+    CELERY_BROKER_URL: str = Field(..., env="CELERY_BROKER_URL")
+    CELERY_RESULT_BACKEND: str = Field(..., env="CELERY_RESULT_BACKEND")
+
+    CELERY_TIMEZONE: str = Field("UTC", env="CELERY_TIMEZONE")
+
     @property
     def ASYNC_DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"

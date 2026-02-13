@@ -5,6 +5,7 @@ from uuid import UUID
 import json
 import logging
 
+from app.api.dependencies.current_user import get_current_user
 from app.core.logging.logging_config import setup_logging
 from app.core.db.database import get_db
 from app.core.redis.redis_config import AsyncRedisClient, get_redis
@@ -87,13 +88,20 @@ async def create_user(
 async def get_user(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
-    redis: AsyncRedisClient = Depends(get_redis)
+    redis: AsyncRedisClient = Depends(get_redis),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Retrieve user by ID:
     - first check Redis cache
     - falls back to PostgreSQL if not cached
     """
+    requester_id = current_user["user_id"]
+
+    # ✅ Ownership check (basic model)
+    if str(user_id) != requester_id:
+        raise HTTPException(403, "Not authorized to view this user")
+    
     async def fetch():
         user = await CRUDHelper.get_by_id(db, User, user_id)
         if not user:
@@ -102,7 +110,7 @@ async def get_user(
 
     data, source = await fetch_from_cache_or_db(
         redis=redis,
-        redis_key=f"user:{user_id}",
+        redis_key=f"user:{requester_id}:{user_id}",
         db_fetch_callable=fetch,
         ttl=USER_CACHE_TTL,
     )

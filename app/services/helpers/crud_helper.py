@@ -4,6 +4,9 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.models.roles import Role
+from app.models.user_roles import UserRole
+
 
 class CRUDHelper:
     """
@@ -95,6 +98,60 @@ class CRUDHelper:
         try:
             await db.delete(obj)
             await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+
+    # 6️⃣ Assign Role to User (RBAC)
+    @staticmethod
+    async def assign_role(
+        db: AsyncSession,
+        user_id: UUID,
+        role_name: str,
+    ):
+        """
+        Assign a role to a user.
+
+        Responsibilities:
+        - Fetch role by name
+        - Prevent duplicate role assignment
+        - Persist mapping
+
+        Notes:
+        - No permission logic here
+        - Pure DB operation
+        """
+
+        try:
+            # ✅ Fetch role
+            result = await db.execute(
+                select(Role).where(Role.name == role_name)
+            )
+            role = result.scalar_one_or_none()
+
+            if not role:
+                raise ValueError(f"Role '{role_name}' does not exist")
+
+            # ✅ Prevent duplicate assignment
+            existing = await db.execute(
+                select(UserRole).where(
+                    UserRole.user_id == user_id,
+                    UserRole.role_id == role.id,
+                )
+            )
+
+            if existing.scalar_one_or_none():
+                return  # Idempotent safe
+
+            # ✅ Create mapping
+            user_role = UserRole(
+                user_id=user_id,
+                role_id=role.id,
+            )
+
+            db.add(user_role)
+            await db.commit()
+
         except Exception:
             await db.rollback()
             raise

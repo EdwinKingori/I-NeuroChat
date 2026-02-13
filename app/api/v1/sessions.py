@@ -4,6 +4,8 @@ from sqlalchemy import select
 from typing import List
 from uuid import UUID
 
+from app.api.dependencies.current_user import get_current_user
+
 from app.core.db.database import get_db
 from app.core.redis.redis_config import get_redis, AsyncRedisClient
 from app.models.session import ConversationSession as SessionModel
@@ -39,26 +41,29 @@ SESSION_LIST_TTL = 300
 @router.post("/", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_Session(
     session_in: SessionCreate,
-    user_id: UUID,
     db: AsyncSession = Depends(get_db),
-    redis: AsyncRedisClient = Depends(get_redis)
+    redis: AsyncRedisClient = Depends(get_redis),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Create a ConversationSession assigned to `user_id`.
     """
-    logger.info("Creating session for user %s", user_id)
+    # Validating User
+    user_id = current_user["user_id"]
+    logger.info("Creating session for user %s", 
+                current_user[user_id])
 
+    
     session = await CRUDHelper.create(
         db,
         SessionModel,
         {**session_in.model_dump(), "user_id": user_id},
     )
-    
-    session_data = SessionResponse.model_validate(session).model_dump()
 
     # Write-Through Redis
+    session_data = SessionResponse.model_validate(session).model_dump(mode="json")
     await redis.set_json(
-        f"session:{session.id}",
+        f"session:{user_id}:{session.id}",
         session_data,
         ex=SESSION_TTL,
     )
@@ -66,8 +71,8 @@ async def create_Session(
     logger.info("Session created + cached | id=%s", session.id)
 
     return SessionResponse(
-        **session_data,
-         source="PostgreSQL DB",
+        **SessionResponse.model_validate(session).model_dump(),
+        source="PostgreSQL DB",
     )
 
 
@@ -75,9 +80,9 @@ async def create_Session(
 @router.get("/{session_id}", response_model=SessionResponse, status_code=status.HTTP_200_OK)
 async def get_session(
     session_id: UUID,
-    user_id: UUID,
     db: AsyncSession = Depends(get_db),
-    redis: AsyncRedisClient = Depends(get_redis)
+    redis: AsyncRedisClient = Depends(get_redis),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Fetch session by ID:
@@ -86,9 +91,14 @@ async def get_session(
     2. If cache miss -> fetch from PostgreSQL
     3. Cache the DB result in Redis
     """
+    # Validating User
+    user_id = current_user["user_id"]
 
-    logger.info("READ session requested | session_id= %s user_id=%s",
-                session_id, user_id)
+    logger.info(
+        "READ session requested | session_id= %s user_id=%s",
+        session_id, 
+        user_id,
+    )
 
     async def fetch():
         session = await CRUDHelper.get_by_id(db, SessionModel, session_id)
@@ -96,7 +106,7 @@ async def get_session(
         if not session or session.user_id != user_id:
             return None
 
-        return SessionResponse.model_validate(session).model_dump()
+        return SessionResponse.model_validate(session).model_dump(mode="json")
 
     data, source = await fetch_from_cache_or_db(
         redis=redis,
@@ -115,15 +125,15 @@ async def get_session(
 
 
 # ✅ Route: Fetching all user's sessions (Pagination and Sorting Integrated)
-@router.get("/", response_model=List[SessionResponse])
+@router.get("/", response_model=dict)
 async def list_user_sessions(
-    user_id: UUID,
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=100),
     sort_by: str = Query("started_at"),
     order: str = Query("desc"),
     db: AsyncSession = Depends(get_db),
     redis: AsyncRedisClient = Depends(get_redis),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     List all sessions owned by a user.
@@ -133,7 +143,8 @@ async def list_user_sessions(
     3. Save to Redis
 
     """
-
+    # Validate user:
+    user_id = current_user["user_id"]
     cache_key = f"user:{user_id}:sessions:{page}:{limit}:{sort_by}:{order}"
 
     async def fetch():
@@ -175,10 +186,12 @@ async def list_user_sessions(
 async def update_session(
     session_id: UUID,
     session_update: SessionUpdate,
-    user_id: UUID,
     db: AsyncSession = Depends(get_db),
     redis: AsyncRedisClient = Depends(get_redis),
+    current_user: dict = Depends(get_current_user),
 ):
+    # Validate user
+    user_id = current_user["user_id"]
 
     logger.info("Updating session=%s user=%s", session_id, user_id)
 
@@ -194,29 +207,32 @@ async def update_session(
 
     session = await CRUDHelper.update(db, session, update_data)
 
-    session_schema = SessionResponse.model_validate(session)
-    session_dict = session_schema.model_dump()
-
     # ✅ WRITE-THROUGH CACHE UPDATE
     await redis.set_json(
         f"session:{session_id}",
-        session_dict,
+        SessionResponse.model_validate(session).model_dump(mode="json"),
         ex=SESSION_TTL,
     )
 
     logger.info("Session metadata updated & cache refreshed | id=%s", session_id)
 
-    return session_schema
+    return SessionResponse(
+        **SessionResponse.model_validate(session).model_dump(),
+        source="PostgreSQL DB",
+    )
 
 
 # ✅ Route: Deleting a user's session
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_session(
     session_id: UUID,
-    user_id: UUID,
     db: AsyncSession = Depends(get_db),
     redis: AsyncRedisClient = Depends(get_redis),
+    current_user: dict = Depends(get_current_user),
 ):
+    # Validating User
+    user_id = current_user["user_id"]
+
     logger.info("Deleting session=%s user=%s", session_id, user_id)
 
     session = await CRUDHelper.get_by_id(db, SessionModel, session_id)
@@ -226,7 +242,6 @@ async def delete_session(
 
     await CRUDHelper.delete(db, session)
 
-    await redis.delete(f"session:{session_id}")
-    await redis.delete(f"user:{user_id}:sessions")
+    await redis.delete(f"session:{user_id}:{session_id}")
 
     logger.info("Session deleted | id=%s", session_id)

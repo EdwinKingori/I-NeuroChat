@@ -5,9 +5,11 @@ from uuid import UUID
 import json
 import logging
 
+from app.api.dependencies.current_user import get_current_user
 from app.core.db.database import get_db
 from app.core.redis.redis_config import AsyncRedisClient, get_redis
 from app.models.message import ChatMessage
+from app.models.session import ConversationSession as SessionModel
 from app.schemas.message import (
     ChatMessageCreate, 
     ChatMessageResponse, 
@@ -39,7 +41,11 @@ async def create_message(
     message_data: ChatMessageCreate,
     db: AsyncSession = Depends(get_db),
     redis: AsyncRedisClient = Depends(get_redis),
+    current_user: dict = Depends(get_current_user),
 ):
+    # Validate User
+    user_id = current_user["user_id"]
+
     logger.info(
         "Creating message | user=%s session=%s role=%s source=%s",
         message_data.user_id,
@@ -48,10 +54,22 @@ async def create_message(
         message_data.source,
     )
 
+    # ✅ Validate session ownership
+    session = await CRUDHelper.get_by_id(db, SessionModel, message_data.session_id)
+
+    if not session or str(session.user_id) != user_id:
+        raise HTTPException(403, "Invalid session")
+
+    # ✅ Force correct user_id
+    message_payload = {
+        **message_data.model_dump(),
+        "user_id": user_id,
+    }
+
     message = await CRUDHelper.create(
         db,
         ChatMessage,
-        message_data.model_dump(),
+        message_payload,
     )
 
     # Cache single message
@@ -61,12 +79,22 @@ async def create_message(
         ex=MESSAGE_CACHE_TTL,
     )
 
-    # Invalidate session message lists
-    await redis.delete(f"session:{message.session_id}:messages")
+    # Write-Through Cache
+    await redis.set_json(
+        f"message:{user_id}:{message.id}",
+        ChatMessageResponse.model_validate(message).model_dump(mode="json"),
+        ex=MESSAGE_CACHE_TTL,
+    )
+
+    # ✅ Invalidate paginated session caches (pattern-safe)
+    await redis.delete_pattern(f"session:{message.session_id}:messages*")
 
     logger.info("Message created | id=%s", message.id)
 
-    return ChatMessageResponse.model_validate(message)
+    return ChatMessageResponse(
+        **ChatMessageResponse.model_validate(message).model_dump(),
+        source="PostgreSQL DB",
+    )
     
 
 # ✅ FETCHING MESSAGE BY ID
@@ -75,16 +103,18 @@ async def get_message(
     message_id:UUID,
     db: AsyncSession = Depends(get_db),
     redis: AsyncRedisClient = Depends(get_redis),
+    current_user: dict = Depends(get_current_user),
 ):
+    user_id = current_user["user_id"]
     async def fetch():
         msg = await CRUDHelper.get_by_id(db, ChatMessage, message_id)
         if not msg:
             return None
-        return ChatMessageResponse.model_validate(msg).model_dump()
+        return ChatMessageResponse.model_validate(msg).model_dump(mode="json")
 
     data, source = await fetch_from_cache_or_db(
         redis=redis,
-        redis_key=f"message:{message_id}",
+        redis_key=f"message:{user_id}:{message_id}",
         db_fetch_callable=fetch,
         ttl=MESSAGE_CACHE_TTL,
     )
@@ -108,6 +138,7 @@ async def list_session_messages(
     order: str = Query("asc"),
     db: AsyncSession = Depends(get_db),
     redis: AsyncRedisClient = Depends(get_redis),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Paginated + sorted messages.
@@ -120,8 +151,15 @@ async def list_session_messages(
         limit: int
     }
     """
+    user_id = current_user["user_id"]
 
-    cache_key = f"session:{session_id}:messages:{page}:{limit}:{sort_by}:{order}"
+    # ✅ Validate session ownership
+    session = await CRUDHelper.get_by_id(db, SessionModel, session_id)
+
+    if not session or str(session.user_id) != user_id:
+        raise HTTPException(403, "Invalid session")
+
+    cache_key = f"session:{user_id}:{session_id}:messages:{page}:{limit}:{sort_by}:{order}"
 
     async def fetch():
         query = select(ChatMessage).where(
@@ -140,7 +178,7 @@ async def list_session_messages(
 
         return {
             "items": [
-                ChatMessageResponse.model_validate(m).model_dump()
+                ChatMessageResponse.model_validate(m).model_dump(mode="json")
                 for m in messages
             ],
             "total": total,
@@ -169,7 +207,10 @@ async def delete_message(
     message_id: UUID,
     db: AsyncSession = Depends(get_db),
     redis: AsyncRedisClient = Depends(get_redis),
+    current_user: dict = Depends(get_current_user),
 ):
+    user_id = current_user["user_id"]
+
     message = await CRUDHelper.get_by_id(db, ChatMessage, message_id)
 
     if not message:
@@ -177,8 +218,8 @@ async def delete_message(
 
     await CRUDHelper.delete(db, message)
 
-    # Cache invalidation
-    await redis.delete(f"message:{message_id}")
+    # Invalidating all paginated session caches
+    await redis.delete(f"message:{user_id}:{message_id}")
     await redis.delete(f"session:{message.session_id}:messages")
 
     logger.info("Message deleted | id=%s", message_id)

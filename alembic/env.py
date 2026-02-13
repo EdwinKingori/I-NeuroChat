@@ -4,7 +4,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from app.core.config import get_settings
-from app.core.database import Base
+from app.core.db.database import Base
 from app.models.users import User
 from app.models.user_memory import UserMemory
 from app.models.message import ChatMessage
