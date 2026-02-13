@@ -5,7 +5,7 @@ import logging
 from app.core.logging.logging_config import setup_logging
 from app.core.logging.middleware import RequestLoggingMiddleware
 from app.core.redis.redis_config import redis_client
-from app.v1.routers import messages, users, sessions
+from app.api.v1 import (messages, users, sessions)
 
 # ✅ Initializing logging
 setup_logging()
