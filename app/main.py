@@ -27,10 +27,11 @@ app = FastAPI(
 )
 
 # ✅ Registering Routes
+app.include_router(admin.router)
 app.include_router(users.router)
 app.include_router(sessions.router)
 app.include_router(messages.router)
-app.include_router(admin.router)
+
 
 # ✅ Registering the middleware
 app.add_middleware(RequestLoggingMiddleware)
