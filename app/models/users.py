@@ -30,40 +30,39 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    # Relationships
+    memory = relationship(
+        "UserMemory",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
 
-# Relationships
-memory = relationship(
-    "UserMemory",
-    back_populates="user",
-    uselist=False,
-    cascade="all, delete-orphan",
-    passive_deletes=True
-)
+    sessions = relationship(
+        "ConversationSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
 
-sessions = relationship(
-    "ConversationSession",
-    back_populates="user",
-    cascade="all, delete-orphan",
-    passive_deletes=True
-)
+    messages = relationship(
+        "ChatMessage",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
 
-messages = relationship(
-    "ChatMessage",
-    back_populates="user",
-    cascade="all, delete-orphan",
-    passive_deletes=True
-)
+    auth_sessions = relationship(
+        "UserSession",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
 
-auth_sessions = relationship(
-    "UserSession",
-    back_populates="user",
-    cascade="all, delete-orphan"
-)
+    roles = relationship(
 
-roles = relationship(
-
-    "Role",
-    secondary="user_roles",
-    back_populates="users"
-)
+        "Role",
+        secondary="user_roles",
+        back_populates="users"
+    )
 
