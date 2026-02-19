@@ -13,8 +13,16 @@ class Role(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Relationships 
     permissions = relationship(
         "Permission",
         secondary="role_permissions",
+        back_populates="roles"
+    )
+
+    # ✅ Role ↔ User (M2M via user_roles)
+    users = relationship(
+        "User",
+        secondary="user_roles",
         back_populates="roles"
     )

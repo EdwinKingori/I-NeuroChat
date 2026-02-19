@@ -9,6 +9,12 @@ from app.models.users import User
 from app.models.user_memory import UserMemory
 from app.models.message import ChatMessage
 from app.models.session import ConversationSession
+from app.models.user_session import UserSession
+from app.models.user_roles import UserRole
+from app.models.roles import Role
+from app.models.permissions import Permission
+from app.models.role_permissions import RolePermission
+
 
 
 # ✅ Loading settings (with fallback to .env)

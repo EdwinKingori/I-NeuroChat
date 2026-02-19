@@ -6,6 +6,7 @@ from app.models import (
     user_memory,
     session,
     message,
+    user_session,
     roles,
     permissions,
     user_roles,
