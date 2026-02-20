@@ -1,10 +1,12 @@
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from sqlalchemy import select
 
 from app.core.db.database import get_db
 from app.api.dependencies.current_user import get_current_user
 from app.models.users import User
+from app.models.roles import Role
 
 
 def require_permission(permission_name: str):
@@ -14,11 +16,17 @@ def require_permission(permission_name: str):
     ):
         user_id = current_user["user_id"]
 
+        # Eager loading roles and nested permissions to avoid lazy-loading(MissingGreenLet)
         result = await db.execute(
-            select(User).where(User.id == user_id)
+            select(User)
+            .options(
+                selectinload(User.roles).selectinload(Role.permissions)
+            )
+            .where(User.id == user_id)
         )
         user = result.scalar_one()
 
+        # Now Safe: roles + permissions are already loaded
         permissions = {
             perm.name
             for role in user.roles

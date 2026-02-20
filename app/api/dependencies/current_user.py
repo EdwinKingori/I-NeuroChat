@@ -33,13 +33,14 @@ async def get_current_user(
 
     cached = await redis.get_json(f"session:{session_key}")
 
+    user_id: str | None = None
+
     if cached:
         if not cached.get("is_active"):
             raise HTTPException(401, "Session expired")
-        
-        user_id = cached["user_id"]
+        user_id = cached.get("user_id")
     else:
-        # PostgreSQL fallback
+        # PostgreSQL fallback if cache miss or interrupted
         result = await db.execute(
             select(UserSession).where(
                 UserSession.session_key == session_key,
@@ -47,21 +48,22 @@ async def get_current_user(
             )
         )
 
-    session = result.scalar_one_or_none()
+        session = result.scalar_one_or_none()
 
-    if not session:
-        raise HTTPException(401, "Invalid or expired session")
+        if not session:
+            raise HTTPException(401, "Invalid or expired session")
     
+        user_id = str(session.user_id)
 
-    # Rehydrate Redis by Write-Through Process
-    await redis.set_json(
-        f"session:{session_key}",
-        {
-            "user_id": str(session.user_id),
-            "is_active": True,
-        },
-        ex=86400,
-    )
+        # Rehydrate Redis by Write-Through Process
+        await redis.set_json(
+            f"session:{session_key}",
+            {
+                "user_id": user_id,
+                "is_active": True,
+            },
+            ex=86400,
+        )
 
     # Loading User
     user_result = await db.execute(
@@ -80,11 +82,9 @@ async def get_current_user(
     logger.debug(
         "Authenticated user=%s admin=%s",
         user.id,
-        user.is_admin,
     )
 
     return {
         "user_id": str(user.id),
-        "is_admin": user.is_admin,
         "is_active": user.is_active,
     }

@@ -5,7 +5,7 @@ import logging
 from app.core.logging.logging_config import setup_logging
 from app.core.logging.middleware import RequestLoggingMiddleware
 from app.core.redis.redis_config import redis_client
-from app.api.v1 import (admin, messages, users, sessions)
+from app.api.v1 import (auth, admin, messages, users, sessions)
 
 # ✅ Initializing logging
 setup_logging()
@@ -27,6 +27,7 @@ app = FastAPI(
 )
 
 # ✅ Registering Routes
+app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(users.router)
 app.include_router(sessions.router)

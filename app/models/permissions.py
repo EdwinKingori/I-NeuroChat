@@ -18,4 +18,5 @@ class Permission(Base):
         "Role",
         secondary="role_permissions",
         back_populates="permissions",
+        lazy="raise",
     )

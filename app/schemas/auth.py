@@ -9,7 +9,7 @@ class LoginRequest(BaseModel):
     password: str
     remember_me: Optional[bool] = False
 
-    @model_validator(mode=False)
+    @model_validator(mode="after")
     def validate_identity(self):
         if not self.email and not self.username:
             raise ValueError("Eaither email or username must be provided")

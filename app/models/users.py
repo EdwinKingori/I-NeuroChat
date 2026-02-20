@@ -27,8 +27,8 @@ class User(Base):
     # For user's activition or deactivation
     last_login = Column(DateTime(timezone=True), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True),server_default=func.now(), onupdate=func.now(), nullable=False)
 
     # Relationships
     memory = relationship(
@@ -60,9 +60,9 @@ class User(Base):
     )
 
     roles = relationship(
-
         "Role",
         secondary="user_roles",
-        back_populates="users"
+        back_populates="users",
+        lazy="raise", 
     )
 

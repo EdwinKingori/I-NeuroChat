@@ -53,6 +53,7 @@ class UserResponse(UserBase):
     email: EmailStr
     first_name: Optional[str]
     last_name: Optional[str]
+    source: Optional[str] = None
 
     class Config:
         from_attributes = True

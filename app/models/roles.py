@@ -24,5 +24,6 @@ class Role(Base):
     users = relationship(
         "User",
         secondary="user_roles",
-        back_populates="roles"
+        back_populates="roles",
+        lazy="raise",
     )
