@@ -1,0 +1,113 @@
+services:
+# FastAPI Application
+  api:
+    build: .
+    container_name: ineurochat_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app 
+    env_file:
+      - .env.docker
+    environment:
+      ENV_FILE: .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ineurochat_network
+
+  # PostgreSQL
+  postgres:
+    image: postgres:15
+    container_name: ineurochat_postgres
+    restart: always
+    ports:
+      - "5433:5432" # ✅ host:container
+    env_file:
+      - .env.docker
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: 
+      - ineurochat_network
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+  
+  # Redis
+  redis:
+    image: redis:7
+    container_name: ineurochat_redis
+    restart: always
+    ports:
+      - "6380:6379" # ✅ host:container
+    volumes:
+      - redis_data:/data
+    networks:
+      - ineurochat_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  
+  # Celery Worker (Background Tasks)
+  celery_worker:
+    build: .
+    container_name: ineurochat_celery_worker
+    command: >
+      celery -A app.core.celery.celery_app:celery worker --loglevel=INFO
+    volumes:
+      - .:/app
+    env_file:
+      - .env.docker
+    environment:
+      ENV_FILE: .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ineurochat_network 
+  
+  # Celery Beat (Periodic Tasks)
+  celery_beat:
+    build: .
+    container_name: ineurochat_celery_beat
+    command: >
+      celery -A app.core.celery.celery_app:celery beat --loglevel=INFO
+    volumes:
+      - .:/app
+    env_file:
+      - .env.docker
+    environment:
+      ENV_FILE: .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ineurochat_network
+
+
+# Volumes
+volumes:
+  postgres_data:
+  redis_data:
+
+# Network
+networks:
+  ineurochat_network:
+    driver: bridge

@@ -1,9 +1,11 @@
-import aioredis
 import json
 import logging
+from typing import AsyncGenerator
+import redis.asyncio as aioredis 
+
 from app.core.config import get_settings
 from .hmac_security import hmac_key
-from typing import AsyncGenerator
+
 settings = get_settings()
 logger = logging.getLogger(__name__)
 

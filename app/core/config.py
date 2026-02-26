@@ -6,7 +6,11 @@ import os
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ENV_PATH = os.path.join(os.path.dirname(BASE_DIR), ".env")
+
+# ✅ Choose env file dynamically:
+# - In Docker: set ENV_FILE=.env.docker (in compose) OR set IN_DOCKER=1
+ENV_FILE = os.getenv("ENV_FILE", ".env")
+ENV_PATH = os.path.join(os.path.dirname(BASE_DIR), ENV_FILE)
 
 
 class Settings(BaseSettings):
