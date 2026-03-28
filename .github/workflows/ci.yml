@@ -1,0 +1,65 @@
+name: IneuroChat CI
+
+on:
+    push:
+        branches:
+            - main
+            - "feature/containerization"
+    pull_request:
+        branches:
+            - main
+            
+jobs:
+    test-and-build:
+        name: Lint, Test, and Docker Build
+        runs-on: ubuntu-latest
+
+        steps:
+            # 1. Get the latest project code from GitHub
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+        # 2. Install the selected Python version
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                python-version: "3.11"
+
+        # 3. Cache pip dependencies to speed up future workflow runs
+            - name: Cache pip dependencies
+              uses: actions/cache@v4
+              with:
+                path: ~/.cache/pip
+                key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+                restore-keys: |
+                    ${{ runner.os }}-pip-
+
+        # 4. Install project dependencies
+            - name: Install dependencies
+              run: |
+                python -m pip install --upgrade pip
+                pip install -r requirements.txt
+
+        # 5. Basic import/startup smoke check
+            - name: Run startup smoke check
+              run: |
+                python -c "from app.main import app; print('FastAPI app import successful')"
+
+        # 6. Linting step (syntax/style sanity check)
+            - name: Run lint checks
+              run: |
+                python -m compileall app
+
+        # 7. Run tests if tests directory exists
+            - name: Run test suite
+              run: |
+                if [ -d "tests" ]; then
+                    pytest -q
+                else
+                    echo "No tests directory found yet. Skipping tests."
+                fi
+
+        # 8. Validate Docker image builds successfully
+            - name: Build Docker image
+              run: |
+                docker build -t ineurochat-ci .
