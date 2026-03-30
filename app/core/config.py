@@ -14,18 +14,18 @@ ENV_PATH = os.path.join(os.path.dirname(BASE_DIR), ENV_FILE)
 
 
 class Settings(BaseSettings):
-    db_port: int = Field(..., env="DB_PORT")
-    db_host: str = Field(..., env="DB_HOST")
-    db_name: str = Field(..., env="DB_NAME")
-    db_user: str = Field(..., env="DB_USER")
-    db_password: str = Field(..., env="DB_PASSWORD")
+    db_port: int | None = Field(None, env="DB_PORT")
+    db_host: str | None = Field(None, env="DB_HOST")
+    db_name: str | None = Field(None, env="DB_NAME")
+    db_user: str | None = Field(None, env="DB_USER")
+    db_password: str | None = Field(None, env="DB_PASSWORD")
 
-    REDIS_URL: str = Field(..., env="REDIS_URL")
-    REDIS_HMAC_SECRET: str = Field(..., env="REDIS_HMAC_SECRET")
+    REDIS_URL: str | None = Field(None, env="REDIS_URL")
+    REDIS_HMAC_SECRET: str | None = Field(None, env="REDIS_HMAC_SECRET")
 
     # CELERY SETTINGS 
-    CELERY_BROKER_URL: str = Field(..., env="CELERY_BROKER_URL")
-    CELERY_RESULT_BACKEND: str = Field(..., env="CELERY_RESULT_BACKEND")
+    CELERY_BROKER_URL: str | None = Field(None, env="CELERY_BROKER_URL")
+    CELERY_RESULT_BACKEND: str | None = Field(None, env="CELERY_RESULT_BACKEND")
 
     CELERY_TIMEZONE: str = Field("UTC", env="CELERY_TIMEZONE")
 
@@ -37,6 +37,24 @@ class Settings(BaseSettings):
     def SYNC_DATABASE_URL(self) -> str:
         return f"postgresql+psycopg2://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
 
+    def validate_required(self):
+        required_fields = [
+            self.db_host,
+            self.db_port,
+            self.db_name,
+            self.db_user,
+            self.db_password,
+            self.REDIS_URL,
+            self.REDIS_HMAC_SECRET,
+            self.CELERY_BROKER_URL,
+            self.CELERY_RESULT_BACKEND,
+        ]
+
+        if any(v is None for v in required_fields):
+            raise ValueError(
+                "Missing required environment variables for runtime"
+            )
+        
     model_config = ConfigDict(
         env_file=ENV_PATH,
         env_file_encoding="utf-8"

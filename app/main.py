@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 import logging
 
+from app.core.config import get_settings
 from app.core.logging.logging_config import setup_logging
 from app.core.logging.middleware import RequestLoggingMiddleware
 from app.core.redis.redis_config import redis_client
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 # ✅ Startup and Shuttding down logic
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = get_settings()
+    # RunTime Validations
+    settings.validate_required()
+
     await redis_client.connect()
     logger.info("✅ Application startup completed.")
     yield
